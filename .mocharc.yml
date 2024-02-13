@@ -1,0 +1,10 @@
+colors: true
+diff: true
+timeout: 600000
+slow: 1000
+ignore:
+  - node_modules
+spec:
+  - 'test/**/*.test.js'
+package: package.json
+exit: true
