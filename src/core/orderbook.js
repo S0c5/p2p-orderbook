@@ -72,6 +72,7 @@ export class OrderBook {
         remain_qty -= order.remain_qty;
 
         order.remain_qty = 0;
+        filled_ids.push(index);
       } else { 
         fill.push({
           order_1: id,
@@ -85,7 +86,6 @@ export class OrderBook {
         filled_qty += remain_qty;
         remain_qty = 0;
       }
-      filled_ids.push(index);
     }
 
     filled_ids.map(index => ordersId.splice(index, 1));

@@ -36,8 +36,8 @@ $ npm install
 
 4. Enjoy the P2P trading 🚀
 
-```
-  node /bin/server.js -g http://localhost:30001 -i Alice --p BTCUSD
+```bash
+$ node ./bin/server.js -g http://localhost:30001 -i Alice --p BTCUSD
 ```
 
 ## Test
@@ -47,10 +47,10 @@ $  npm test
 
 ```
 
-# To Do
+# ToDo
 
-[ ] If a server dies, a client can become a new server and announce this change to other clients.
-[ ] when client connects it must sync state with server.
+- [ ] If a server dies, a client can become a new server and announce this change to other clients.
+- [ ] when client connects it must sync state with server.
 
 
 # Limitations
