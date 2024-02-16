@@ -40,7 +40,6 @@ export class CustomTransform extends Transform {
           });
         } catch (err) {
           log(`Transform.cb() => Error ${'='.repeat(50)}`, { err }, '='.repeat(50));
-          console.error('ERRROR_AT_TRANSFORMER', err);
           cb(null, { error: new OrderError(chunk.order, err), ...chunk });
         }
       }

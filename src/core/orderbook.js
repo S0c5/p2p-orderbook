@@ -56,8 +56,8 @@ export class OrderBook {
 
     for (const [index, orderId] of Object.entries(ordersId)) {
       const order = this.orders[orderId];
-      if (remain_qty == 0) break;
 
+      if (remain_qty == 0) break;
       if (remain_qty >= order.remain_qty) {
         fill.push({
           order_1: id,
@@ -226,7 +226,7 @@ export class OrderBook {
     }
   }
 
-  depth(max_10) { 
+  depth() { 
     return {
       asks: Object.entries(this.asks).map(([price, orders]) => [+price, orders.reduce((p, id) => p + this.orders[id].remain_qty, 0)]),
       bids: Object.entries(this.bids).map(([price, orders]) => [+price, orders.reduce((p, id) => p + this.orders[id].remain_qty, 0)])

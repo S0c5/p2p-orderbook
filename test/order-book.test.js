@@ -233,7 +233,6 @@ describe('Simple-orderbook', () => {
       })
     })
 
-
     const eventMarketBidUnfilled = book.exec(new OrderMarket({
       id: 4,
       pair,

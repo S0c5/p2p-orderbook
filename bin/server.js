@@ -20,7 +20,7 @@ const server = new P2POrderBook({
   grape_uri: args.grape,
   pub_server_port: Math.ceil(Math.random() * 1000 + 1000),
   id: args.id,
-  wait_for_server_timeout: 10000,
+  lookup_timeout_s: 10000,
 });
 
 console.log('==== TRADING TERMINAL =====');
@@ -28,7 +28,7 @@ console.log('==== created by s0c5  =====');
 
 console.log('> Connecting to satellital networks... ')
 await server.start();
-console.log(`> 🛰️ You are online as ${server.is_server ? 'Server' : 'Client'} `)
+console.log(`> 🛰️ You are online as ${server.id}`)
 
 function printEvents(event) {
   console.log('===== RESULT ====');

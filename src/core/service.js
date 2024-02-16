@@ -17,10 +17,10 @@ export class P2POrderBook extends EventEmitter {
   #service_pub;
   #service_sub;
 
-  #wait_for_server_timeout = 20_000;
+  #lookup_timeout_s = 20_000;
 
   #orderBook = new OrderBookRegistry();
-  #announce = null;
+  #announce_interval = null;
   is_server = false;
   
   /**
@@ -29,7 +29,7 @@ export class P2POrderBook extends EventEmitter {
    * @param {string} ops.grape_uri
    * @param {number} ops.pub_server_port
    * @param {string} ops.id
-   * @param {number} ops.wait_for_server_timeout
+   * @param {number} ops.lookup_timeout_s
    */
   constructor(ops) {
     super();
@@ -38,85 +38,99 @@ export class P2POrderBook extends EventEmitter {
       grape: ops.grape_uri,
     });
 
-    this.#wait_for_server_timeout = ops.wait_for_server_timeout || 20_000;
+    this.#lookup_timeout_s = ops.lookup_timeout_s || 30;
     this.is_server = ops.is_server;    
     this.#peer_pub_port = ops.pub_server_port || 3001;    
     this.id = ops.id;
 
-    this.orderQueue = new Readable({
+    this.order_queue = new Readable({
       objectMode: true,
       highWaterMark: HIGH_WATER_MARK,
       read() {}
     });
 
-    this.orderQueue
-      .pipe(this.createCollider())
-      .pipe(this.createAnouncer());
+    this.order_queue
+      .pipe(this.#createCollider())
+      .pipe(this.#createAnouncer());
 
   }
 
   async start() {
-    if (this.#announce) return;
+    if (this.#announce_interval) return;
     this.#link.start();
-    let foundServer = await this.#connectToServer();
-
-    if (!foundServer) {
-      this.is_server = true;
-      this.#peer_pub = new WS.PeerPub(this.#link);
-      this.#peer_pub.init();
-      this.#service_pub = this.#peer_pub.transport('server');
-      this.#announce = setInterval(() => {
-        if (this.is_server) this.#link.announce(CHANNEL, this.#peer_pub_port, {});
-      }, 1000);
-
-      this.#service_pub.listen(this.#peer_pub_port);
-      this.#service_pub.socket.on('connection', (ws) => {
-        ws.on('message', (message) => {
-          this.#onCmd(message);
-          this.#service_pub.pub(message);
-        });
-      });
-    }
-
-    return delay(1000);
+    
+    return Promise.all([
+      this.#startServer(),
+      this.#connectToServer(),
+    ])
   }
 
-  async #connectToServer() {
-    let tries = this.#wait_for_server_timeout / 1000;
-    let dest = false;
+
+  async #announcer() {
+    this.#link.announce(CHANNEL, this.#peer_pub_port)
+  }
+
+  async #startServer() {
+    this.#peer_pub = new WS.PeerPub(this.#link);
+    this.#peer_pub.init();
+    this.#service_pub = this.#peer_pub.transport('server');
+    this.#announce_interval = setInterval(() => this.#announcer(), 5_000);
+    this.#service_pub.listen(this.#peer_pub_port);
+    this.#announcer();
+    this.#service_pub.socket.on('connection', (ws) => {
+      //broadcast to all clients
+      ws.on('message', (message) => {
+        this.#onCmd(message);
+        this.#service_pub.pub(message);
+      });
+    });
+  }
+
+  async #connectToServer(died_servers = []) {
+    let tries = this.#lookup_timeout_s;
+    let dest = null;
 
     while (tries--) {
       dest = await new Promise((r, e) => {
           this.#link.lookup(CHANNEL, {}, (err, dest) => {
-            if(err && err.message == "ERR_GRAPE_LOOKUP_EMPTY") {
-              return r(false);
-            }
-            if (err) {
-              return e(err);
-            }
-            r(dest && dest);
+            if (err && err.message == "ERR_GRAPE_LOOKUP_EMPTY") return r(null);
+            if (err) return e(err);
+            r(dest);
           });
       });
       if (dest) break;
-      await delay(1000);
+      await delay(1_000);
     }
-    
-    if (!dest) return false;
 
-    this.#peer_sub = new WS.PeerSub(this.#link);
-    this.#service_sub = this.#peer_sub.transport(dest);
+    if (!dest) return false;
+    const [ dest_host ] = dest.filter(x => !died_servers.includes(x));
+    if (dest_host.split(':')[1] == this.#peer_pub_port) return false;
+    if (!dest_host) {
+      // if not available servers retry
+      setTimeout(() => this.#connectToServer(), this.#lookup_timeout_s * 1000);
+      return false;
+    }
+
+    this.#peer_sub = new WS.PeerSub(this.#link, {});
+    this.#service_sub = this.#peer_sub.transport(dest_host);
     this.#service_sub.sub();
-    this.#service_sub.on('message', (message) => {
-      this.#onCmd.bind(this)(message);
+    this.#service_sub.on('message', m => {
+      this.#onCmd(m);
+      this.#service_pub.pub(m);
     });
 
-    return true;
+    this.#service_sub.socket.on('close', () => {
+      console.log('closed at', this.id, 'looking for other serveer');
+      this.#connectToServer(died_servers.concat(dest_host));
+    });
+
+    return new Promise(r => this.#service_sub.socket.on('open', _ => r(true)));
   }
 
 
   #onCmd(cmdStr) {
     const { cmd, args, from } = JSON.parse(cmdStr);
-    if (from === this.id ) return ;
+    if (from === this.id) return;
     switch(cmd) {
       case 'ORDER':
         this.exec(args.order)
@@ -125,21 +139,23 @@ export class P2POrderBook extends EventEmitter {
   
   #sendCmd(cmd, args) {
     const cmdStr = JSON.stringify({ cmd, args, from: this.id });
-    if (this.is_server) {
-      this.#service_pub.pub(cmdStr);
-    } else {
-      this.#service_sub.socket.send(cmdStr);
-    }
+    this.#service_pub.pub(cmdStr);
+    if (this.#service_sub?.isActive()) this.#service_sub.socket.send(cmdStr);
   }
 
-  stop() {
-    if (!this.#announce) return;
-    clearInterval(this.#announce);
+  async stop() {
+    if (!this.#announce_interval) return;
+    clearInterval(this.#announce_interval);
     this.#link.stop();
-    this.#service_pub.stop();
+    await new Promise(r => this.#service_pub.socket.close(r));
+    this.#service_sub?.isActive() && this.#service_sub?._stop();
   }
 
-  createCollider() {
+  getPeersConnected() {
+    return this.#service_pub?.socket.clients.size;
+  }
+
+  #createCollider() {
     return makeTransformer(({ order }, _, next) => {
       const orderBook = this.#orderBook.getOrCreate(order.pair);
       let events = orderBook.exec(order);
@@ -148,7 +164,7 @@ export class P2POrderBook extends EventEmitter {
     });
   }
 
-  createAnouncer() {
+  #createAnouncer() {
     return makeTransformer(({ order }, _, next) => {
       if(order.status == 'TO_ANNOUNCE') this.#sendCmd('ORDER', { order: {
         ...order,
@@ -172,7 +188,7 @@ export class P2POrderBook extends EventEmitter {
    * @param {OrderLimit | OrderMarket} order 
    */
   exec(order) {
-    this.orderQueue.push({ order });
+    this.order_queue.push({ order });
   }
 }
 
