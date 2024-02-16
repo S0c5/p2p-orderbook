@@ -2,15 +2,15 @@
 
 import { OrderLimit, OrderMarket, P2POrderBook } from "../src/index.js";
 import prompts from "prompts";
+import crypto from 'crypto';
 import parserArgs from 'yargs/yargs';
 
 const args = parserArgs(process.argv.slice(2))
     .usage('Usage: $0 [options]')
     .example('$0 -g http://localhost:30001 -i alice -p BTCUSD')
     .alias('g', 'grape')
-    .alias('i', 'id')
     .alias('p', 'pair')
-    .demandOption(['g', 'i', 'p'])
+    .demandOption(['g', 'p'])
     .help('h')
     .alias('h', 'help')
     .epilog('OpenSourced 2023')
@@ -19,7 +19,7 @@ const args = parserArgs(process.argv.slice(2))
 const server = new P2POrderBook({
   grape_uri: args.grape,
   pub_server_port: Math.ceil(Math.random() * 1000 + 1000),
-  id: args.id,
+  id: crypto.randomBytes(10).toString('hex'),
   lookup_timeout_s: 10000,
 });
 
@@ -31,7 +31,7 @@ await server.start();
 console.log(`> 🛰️ You are online as ${server.id}`)
 
 function printEvents(event) {
-  console.log('===== RESULT ====');
+
 
   if (event.type === 'Unfilled') {
     console.log('> Market order not collided.')
@@ -41,15 +41,12 @@ function printEvents(event) {
     console.log(`> Limit ${event.id} order placed`)
   }
 
-  if (event.type === 'Filled') {
+  if (['Filled', 'PartialFilled'].includes(event.type)) {
     console.log(`> Order ${event.id} Filled.`)
-
     event.fills.map(x => {
       console.log(`🔥 Collided with ${x.order_2} for ${x.qty} units at $${x.price}`);
     })
   }
-
-  console.log('===== FINISHED ====');
 }
 
 server.on('order_executed', ({ events }) => {
