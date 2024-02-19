@@ -16,6 +16,13 @@ export class OrderBookRegistry {
     return this.#registry.get(pair);
   }
 
+
+  dump() {
+    return Array.from(this.#registry.values())
+      .map(b => b.dump())
+      .reduce((p, n) => p.concat(n), []);
+  }
+
   /**
    * 
    * @param {String} pair 
