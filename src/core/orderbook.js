@@ -1,10 +1,23 @@
 import assert from 'assert';
 
+function sumOrders(orders) {
+  return ([price, o]) => [+price, o.reduce((p, id) => p + orders[id].remain_qty, 0)]
+}
+
 export class OrderBook {
   constructor() {
     this.orders = new Map();
     this.bids = new Map();
     this.asks = new Map();
+  }
+
+  dump() {
+    return [...Object.values(this.orders)]
+      .filter(x => x.type == 'Limit')
+      .map(x => ({
+        ...x,
+        status: 'DUMPED'
+      }));
   }
 
   /**
@@ -56,8 +69,8 @@ export class OrderBook {
 
     for (const [index, orderId] of Object.entries(ordersId)) {
       const order = this.orders[orderId];
-      if (remain_qty == 0) break;
 
+      if (remain_qty == 0) break;
       if (remain_qty >= order.remain_qty) {
         fill.push({
           order_1: id,
@@ -219,6 +232,11 @@ export class OrderBook {
    * @param {OrderLimit | OrderMarket} order 
    */
   exec(order) {
+    if (this.orders[order.id]) return {
+      type: 'DuplicatedOrder',
+      id: order.id,
+    }
+
     if (order.type == 'Limit') {
       return this.limit(order);
     } else if (order.type == 'Market'){
@@ -226,10 +244,10 @@ export class OrderBook {
     }
   }
 
-  depth(max_10) { 
+  depth() { 
     return {
-      asks: Object.entries(this.asks).map(([price, orders]) => [+price, orders.reduce((p, id) => p + this.orders[id].remain_qty, 0)]),
-      bids: Object.entries(this.bids).map(([price, orders]) => [+price, orders.reduce((p, id) => p + this.orders[id].remain_qty, 0)])
+      asks: Object.entries(this.asks).map(sumOrders(this.orders)).filter(([_, s]) => s > 0),
+      bids: Object.entries(this.bids).map(sumOrders(this.orders)).filter(([_, s]) => s > 0)
     }
   }
 }

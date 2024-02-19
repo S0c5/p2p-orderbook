@@ -1,8 +1,15 @@
+import crypto from 'crypto';
 import { Transform } from 'stream';
 import debug from 'debug';
 
 const log = debug('Orderbook');
 export const HIGH_WATER_MARK = 10_000;
+
+
+export function generateRandomId() {
+  const buffer = Buffer.from(crypto.randomBytes(8));
+  return buffer.readUint32BE();
+}
 
 /**
  * @typedef {import('./models').OrderLimit} OrderLimit
@@ -40,7 +47,6 @@ export class CustomTransform extends Transform {
           });
         } catch (err) {
           log(`Transform.cb() => Error ${'='.repeat(50)}`, { err }, '='.repeat(50));
-          console.error('ERRROR_AT_TRANSFORMER', err);
           cb(null, { error: new OrderError(chunk.order, err), ...chunk });
         }
       }

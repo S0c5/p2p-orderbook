@@ -1,5 +1,5 @@
-import crypto from 'crypto';
 import assert from 'assert';
+import { generateRandomId } from './utils.js';
 
 export class OrderBase {
   status = 'TO_ANNOUNCE';
@@ -10,8 +10,7 @@ export class OrderBase {
 
   constructor(data = {}) {
     Object.assign(this, data);
-    const buffer = Buffer.from(crypto.randomBytes(8));
-    this.id = +(data.id || buffer.readUint32BE());
+    this.id = +(data.id || generateRandomId());
     assert(this.id, 'define an id');
     assert(this.pair, 'define a pair');
     assert(this.qty > 0, 'qty should be greater than 0');
